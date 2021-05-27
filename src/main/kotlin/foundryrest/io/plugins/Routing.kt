@@ -4,9 +4,7 @@ import io.ktor.routing.*
 import io.ktor.http.*
 import io.ktor.application.*
 import io.ktor.response.*
-import io.ktor.request.*
 import kotlinx.coroutines.async
-import java.lang.Compiler.command
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -46,6 +44,13 @@ fun processStatus(pid: Int): Boolean{
     val isReader = InputStreamReader(pr.inputStream)
     val bReader = BufferedReader(isReader)
     var strLine = bReader.readLine()
+
+    do {
+        if (strLine.contains(" " + pid + " ")) {
+            return true;
+        }
+        strLine = bReader.readLine()
+    } while (strLine.length() > 0)
 
     println(strLine)
 
