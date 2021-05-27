@@ -1,76 +1,104 @@
 package foundryrest.io.plugins
 
-import io.ktor.routing.*
-import io.ktor.http.*
 import io.ktor.application.*
+import io.ktor.http.*
 import io.ktor.response.*
-import kotlinx.coroutines.async
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.FileInputStream
-
-var pid: Long = -1
+import io.ktor.routing.*
+import java.io.*
+import kotlin.io.copyTo
 
 fun Application.configureRouting() {
     routing {
         get("/") {
             call.respond(HttpStatusCode.Accepted, "fOunDRy D0S IrmÃo 3Stá OonL1n3!!!")
         }
-        get("/revivify"){
-            val response: String
-            if (processStatus()){
-                response = "Já ta online fera."
-            } else {
-                response = "Criado irmão, tmj!"
-                async { runNode() }
-            }
-
-            call.respond(HttpStatusCode.Accepted, response)
-        }
         get("/log/error") {
-            val fstream = FileInputStream("/home/ec2-user/foundrydata/logs/error.log")
-            //val br = BufferedReader(InputStreamReader(fstream))
-
-            call.respond(HttpStatusCode.Accepted, fstream)
+            call.respondFile(File("/home/ec2-user/foundrydata/logs/error.log"))
         }
         get("/log/debug") {
-            val fstream = FileInputStream("/home/ec2-user/foundrydata/logs/debug.log")
-            //val br = BufferedReader(InputStreamReader(fstream))
-
-            call.respond(HttpStatusCode.Accepted, fstream)
+            call.respondFile(File("/home/ec2-user/foundrydata/logs/debug.log"))
         }
+
         get("/pwkill") {
-            pid = -1
+            killSh()
             call.respond(HttpStatusCode.Accepted, "Está morto, não respira.")
         }
-
+        get("/revivify"){
+            call.respond(HttpStatusCode.Accepted, runSh())
+        }
     }
 }
 
-fun runNode(){
-    pid = Runtime.getRuntime().exec("node /home/ec2-user/foundryvtt/resources/app/main.js --dataPath=\$HOME/foundrydata").pid()
+fun runSh(): String{
+    return if(processStatus("node foundryvtt") && processStatus("sh loop.sh")){
+        val aux = getPidFromProcess("sh loop.sh")
+        if (aux == readFile()) "Já ta online fera."
+        else {
+            killProcess(aux)
+            "Já ta online mas não fui eu q abri, deu bug tbm, foda..."
+        }
+    } else if (processStatus("node foundryvtt") && !processStatus("sh loop.sh")){
+        "Já ta online mas não fui eu q abri."
+    } else {
+        val pr = Runtime.getRuntime().exec("sh loop.sh")
+        saveFile(pr.pid())
+        "Criado irmão, tmj!"
+    }
 
-    while (true){
-        if (pid == -1L) break
-        if (!processStatus()) pid = Runtime.getRuntime().exec("node /home/ec2-user/foundryvtt/resources/app/main.js --dataPath=\$HOME/foundrydata").pid()
+}
 
-        Thread.sleep(10000)
+fun killSh(){
+    val pid = readFile()
+
+    if (processStatus("sh loop.sh", pid)) killProcess(pid)
+    if (processStatus("node foundryvtt")){
+        val id = getPidFromProcess("node foundryvtt")
+        if (id != -1L){
+            killProcess(id)
+        }
     }
 }
 
-fun processStatus(): Boolean{
-    if (pid == -1L) return false
-
-    val line = "ps -p $pid"
-
-    val rt = Runtime.getRuntime()
-    val pr = rt.exec(line)
+fun processStatus(name: String): Boolean{
+    val pr = Runtime.getRuntime().exec("ps aux")
 
     val lines = BufferedReader(InputStreamReader(pr.inputStream)).lines()
-
     for (line in lines) {
-        if (line.contains("node foundryvtt")) return true
+        if (line.contains(name)) return true
+    }
+    return false
+}
+
+fun processStatus(name: String, pid: Long): Boolean{
+    val pr = Runtime.getRuntime().exec("ps -p $pid")
+
+    val lines = BufferedReader(InputStreamReader(pr.inputStream)).lines()
+    for (line in lines) {
+        if (line.contains(name)) return true
+    }
+    return false
+}
+
+fun getPidFromProcess(name: String): Long{
+    val pr = Runtime.getRuntime().exec("ps aux")
+
+    val lines = BufferedReader(InputStreamReader(pr.inputStream)).lines()
+    for (line in lines) {
+        if (line.contains(name)) return line.split("\\s+".toRegex())[1].toLong()
     }
 
-    return false;
+    return -1
 }
+
+fun saveFile(pid: Long){
+    val fileName = "process.txt"
+    val myfile = File(fileName)
+
+    myfile.printWriter().use { out ->
+        out.print(pid)
+    }
+}
+
+fun readFile(): Long = File("process.txt").readText(Charsets.UTF_8).toLong()
+
+fun killProcess(pid: Long): Process = Runtime.getRuntime().exec("kill -9 $pid")
