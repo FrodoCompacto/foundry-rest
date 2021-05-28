@@ -5,72 +5,72 @@ import io.ktor.http.*
 import io.ktor.response.*
 import io.ktor.routing.*
 import java.io.*
-import kotlin.io.copyTo
+import java.net.URI
+
+const val foundryProcess = "node /home/"
+const val loop = "sh loop.sh"
 
 fun Application.configureRouting() {
     routing {
         get("/") {
-            call.respond(HttpStatusCode.Accepted, "fOunDRy D0S IrmÃo 3Stá OonL1n3!!!")
+            call.respond(HttpStatusCode.OK, "sV TA funcional parssa")
+        }
+        get("/status/foundry") {
+            if (processStatus(foundryProcess)) call.respond(HttpStatusCode.OK)
+            else call.respond(HttpStatusCode.Forbidden)
+        }
+        get("/status/loop") {
+            if (processStatus(loop)) call.respond(HttpStatusCode.OK)
+            else call.respond(HttpStatusCode.Forbidden)
         }
         get("/log/error") {
-            call.respondFile(File("/home/ec2-user/foundrydata/logs/error.log"))
+            call.respondFile(File(URI.create("file:///home/ec2-user/foundrydata/Logs/error.log")))
         }
         get("/log/debug") {
-            call.respondFile(File("/home/ec2-user/foundrydata/logs/debug.log"))
+            call.respondFile(File(URI.create("file:///home/ec2-user/foundrydata/Logs/debug.log")))
         }
-
         get("/pwkill") {
-            killSh()
-            call.respond(HttpStatusCode.Accepted, "Está morto, não respira.")
+            if (killAll()) {
+                call.respond(HttpStatusCode.OK, "Está morto, não respira.")
+            } else call.respond(HttpStatusCode.Forbidden, "faio")
         }
         get("/revivify"){
-            call.respond(HttpStatusCode.Accepted, runSh())
+            val isLoop = processStatus(loop)
+            val isNode = processStatus(foundryProcess)
+
+            if (isLoop && isNode) call.respond(HttpStatusCode.Forbidden, "Já ta rodando, para aí dps me avisa q eu rodo.")
+            else if (!isLoop && isNode) call.respond(HttpStatusCode.Forbidden, "Já ta rodando, mas ta sem o script pra deixar on, deve ter aberto por outro lugar. Fecha tudo se quiser usar aqui dnv.")
+            else if (isLoop && !isNode) call.respond(HttpStatusCode.Forbidden, "Deu bug no bagui me avisa no zap. fechar td se pa resolve mas não garanto.")
+            else {
+                if(runSh()) call.respond(HttpStatusCode.OK, "fOunDRy D0S IrmÃo 3Stá OonL1n3!!!")
+                else call.respond(HttpStatusCode.Forbidden, "Não deu p abrir o foundry, deu bug sla")
+            }
         }
     }
 }
 
-fun runSh(): String{
-    return if(processStatus("node foundryvtt") && processStatus("sh loop.sh")){
-        val aux = getPidFromProcess("sh loop.sh")
-        if (aux == readFile()) "Já ta online fera."
-        else {
-            killProcess(aux)
-            "Já ta online mas não fui eu q abri, deu bug tbm, foda..."
-        }
-    } else if (processStatus("node foundryvtt") && !processStatus("sh loop.sh")){
-        "Já ta online mas não fui eu q abri."
-    } else {
-        val pr = Runtime.getRuntime().exec("sh loop.sh")
-        saveFile(pr.pid())
-        "Criado irmão, tmj!"
+fun killAll(): Boolean{
+    while (processStatus(loop)){
+        getPidFromProcess(loop).let { if (it != -1L) killProcess(it) }
     }
+    while (processStatus(foundryProcess)){
+        getPidFromProcess(foundryProcess).let { if (it != -1L) killProcess(it) }
+    }
+    if (processStatus(loop) || processStatus(foundryProcess)) return false
 
+    return true
 }
 
-fun killSh(){
-    val pid = readFile()
+fun runSh(): Boolean{
+    Runtime.getRuntime().exec(loop)
+    Thread.sleep(2000)
+    if (processStatus(loop) && processStatus(foundryProcess)) return true
 
-    if (processStatus("sh loop.sh", pid)) killProcess(pid)
-    if (processStatus("node foundryvtt")){
-        val id = getPidFromProcess("node foundryvtt")
-        if (id != -1L){
-            killProcess(id)
-        }
-    }
+    return false
 }
 
 fun processStatus(name: String): Boolean{
     val pr = Runtime.getRuntime().exec("ps aux")
-
-    val lines = BufferedReader(InputStreamReader(pr.inputStream)).lines()
-    for (line in lines) {
-        if (line.contains(name)) return true
-    }
-    return false
-}
-
-fun processStatus(name: String, pid: Long): Boolean{
-    val pr = Runtime.getRuntime().exec("ps -p $pid")
 
     val lines = BufferedReader(InputStreamReader(pr.inputStream)).lines()
     for (line in lines) {
@@ -89,16 +89,5 @@ fun getPidFromProcess(name: String): Long{
 
     return -1
 }
-
-fun saveFile(pid: Long){
-    val fileName = "process.txt"
-    val myfile = File(fileName)
-
-    myfile.printWriter().use { out ->
-        out.print(pid)
-    }
-}
-
-fun readFile(): Long = File("process.txt").readText(Charsets.UTF_8).toLong()
 
 fun killProcess(pid: Long): Process = Runtime.getRuntime().exec("kill -9 $pid")
