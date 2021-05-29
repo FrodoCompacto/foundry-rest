@@ -9,4 +9,5 @@ else
     echo "$SERVICE stopped"
     node /home/ec2-user/foundryvtt/resources/app/main.js --dataPath=/home/ec2-user/foundrydata
 fi
+sleep 5
 done
